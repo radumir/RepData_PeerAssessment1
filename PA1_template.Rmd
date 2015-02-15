@@ -5,21 +5,207 @@ output:
     keep_md: true
 ---
 
+```{r setoptions,echo=FALSE}
+library(knitr)
+
+opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+```
+
 
 ## Loading and preprocessing the data
 
+First of all unzip the data.
 
+```{r}
+if(!file.exists("activity.csv")){
+  unzip("activity.zip")
+}
+```
+
+Then load the csv data in a dataframe.
+
+```{r}
+rawData <- read.table("activity.csv",sep=",",na.strings="NA",header=TRUE,stringsAsFactors=FALSE)
+```
+
+Finally adjust the date to be of type Date, and display a summary to check that everything is fine.
+
+```{r}
+rawData1 <- rawData
+
+rawData1[,2] <- as.Date(rawData1[,2],'%Y-%m-%d')
+
+str(rawData1)
+
+```
 
 ## What is mean total number of steps taken per day?
 
+```{r}
+perDay <- split(rawData1, rawData1$date)
 
+stepsPerDay <- data.frame( day = as.Date(character()), stepsNb = numeric(0))
+
+daysNb <- length(perDay)
+
+for( dayNb in 1:daysNb) {
+  stepsPerDay[dayNb,1] <- perDay[[dayNb]]$date[1]
+  stepsPerDay[dayNb,2] <- sum( perDay[[dayNb]]$steps, na.rm = TRUE)
+}
+
+str(stepsPerDay)
+
+```
+
+```{r fig.align='center', fig.height=4}
+hist(stepsPerDay[,2],freq=TRUE,main="Steps per day",xlab="steps",breaks=50)
+```
+
+```{r}
+stepsMedian = as.integer(median(stepsPerDay[,2]))
+stepsMean = round(mean(stepsPerDay[,2]),2)
+```
+
+The median of steps per day is **`r stepsMedian`** and the mean of the steps per day is **`r stepsMean`**. 
 
 ## What is the average daily activity pattern?
 
+```{r}
+#split the data on intervals
+rawData2 <- rawData
+rawData2[,2] <- as.Date(rawData2[,2],'%Y-%m-%d')
+rawData2[,3] <- as.factor(rawData2[,3])
+perInterval <- split(rawData2,rawData2$interval)
 
+#initialize the output dataset
+averageStepsPerInterval <- data.frame( itv1 = character(0), stepsAverage = numeric(0))
+averageStepsPerInterval[,1] <- as.character(averageStepsPerInterval[,1])
+
+#iterate and fullfill the dataset
+itvNb <- length(perInterval)
+for( i in 1:itvNb) {
+  intervalName <- as.character(perInterval[[i]]$interval[1])
+  averageStepsPerInterval[i,1] <- intervalName
+  averageStepsPerInterval[i,2] <- mean( perInterval[[i]]$steps, na.rm = TRUE)
+}
+
+#show a summary to check that everything is ok ...
+str(averageStepsPerInterval)
+
+```
+
+```{r fig.height=4}
+x <- averageStepsPerInterval[,1]
+y <- averageStepsPerInterval[,2]
+plot(x,y,type="l",main="Average steps on intervals",ylab="steps",xlab="interval")
+
+maxSteps <- max(averageStepsPerInterval[,2])
+maxActivityInterval <- averageStepsPerInterval[averageStepsPerInterval[,2]==maxSteps,1]
+```
+
+The interval with the maximum numer of steps is **`r maxActivityInterval`**.
 
 ## Imputing missing values
 
+```{r}
+#calculate NAs
+naCount = length( rawData[is.na(rawData$steps), ]$steps )
+```
+The number of rows with NA values is **`r naCount`**.
+
+```{r}
+#initialize the output dataset
+noNAData <- data.frame( steps = numeric(0), date = character(0), interval = numeric(0))
+noNAData[,2] <- as.character(noNAData[,2])
+
+rdCt = length(rawData$date)
+
+for( r in 1:rdCt ) {
+  noNAData[r,2] = rawData[r,2]
+  noNAData[r,3] = rawData[r,3]
+  if(is.na(rawData[r,1])) {
+    istr = as.character(rawData[r,3])
+    noNAData[r,1] = as.integer(averageStepsPerInterval[averageStepsPerInterval[,1]==istr,2])
+  } else {
+    noNAData[r,1] = rawData[r,1]
+  }
+}
+
+noNAData[,2] <- as.Date(noNAData[,2],'%Y-%m-%d')
+
+str(noNAData)
+
+```
+
+```{r}
+perDay2 <- split(noNAData, noNAData$date)
+
+stepsPerDay2 <- data.frame( day = as.Date(character()), stepsNb = numeric(0))
+
+daysNb <- length(perDay2)
+
+for( dayNb in 1:daysNb) {
+  stepsPerDay2[dayNb,1] <- perDay2[[dayNb]]$date[1]
+  stepsPerDay2[dayNb,2] <- sum( perDay2[[dayNb]]$steps, na.rm = TRUE)
+}
+
+str(stepsPerDay2)
+
+```
+
+```{r fig.align='center', fig.height=4}
+hist(stepsPerDay2[,2],freq=TRUE,main="Steps per day",xlab="steps",breaks=50)
+```
+
+```{r}
+stepsMedian2 = as.integer(median(stepsPerDay2[,2]))
+stepsMean2 = format(round(mean(stepsPerDay2[,2]),2),nsmall=2)
+```
+
+The median of steps per day for data with no NAs inside is **`r stepsMedian2`** and the mean, for the same dataset is **`r stepsMean2`**. 
+
+The values differ from the case when NAs, there are many days with steps different than 0 than before and thus the mean and median increased and also the histogram looks more natural without that odd peek for days with 0 steps.
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+Create the factor weekday and weekend. Name it 'kind'.
+
+```{r}
+sundays = weekdays(noNAData$date) == "Sunday"
+saturdays = weekdays(noNAData$date) == "Saturday"
+weekendDays = sundays | saturdays
+noNAData$kind = "weekday"
+noNAData[weekendDays,4] = "weekend"
+
+noNAData$kind = as.factor(noNAData$kind)
+
+str(noNAData)
+
+
+```
+
+
+```{r}
+library(plyr)
+
+noNAData <- transform(noNAData, interval = as.factor(interval) )
+
+twoDS <- split(noNAData, noNAData$kind)
+ds1 <- twoDS[[1]][,c(1,3)]
+ds1a <- ddply(ds1,.(interval),summarize,sum=mean(steps))
+ds1a$kind = "weekday"
+
+ds2 <- twoDS[[2]][,c(1,3)]
+ds2a <- ddply(ds2,.(interval),summarize,sum=mean(steps))
+ds2a$kind = "weekend"
+
+finalData = rbind(ds1a,ds2a)
+finalData <- transform(finalData, kind = as.factor(kind) )
+
+str(finalData)
+
+library(lattice)
+xyplot(sum ~ interval | kind, type="l", ylab="steps average", data = finalData, layout = c(1,2))
+
+```
